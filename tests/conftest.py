@@ -1,6 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.application import retrying_extractor
+
 from app.infrastructure.config import Settings, load_settings
 from app.main import create_app
 from tests.fakes import FakeDocumentExtractor, InMemoryExtractionRepository
@@ -23,6 +25,14 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "MAX_FILE_MB", "DOCAI_TIMEOUT_SECONDS", "PORT",
     ):
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def retry_sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Los tests no esperan la pausa del reintento; solo registran cuánto se habría esperado."""
+    sleeps: list[float] = []
+    monkeypatch.setattr(retrying_extractor, "_sleep", sleeps.append)
+    return sleeps
 
 
 @pytest.fixture

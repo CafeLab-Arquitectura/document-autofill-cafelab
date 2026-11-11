@@ -1,10 +1,12 @@
-"""Política de reintento: UN solo reintento, solo ante errores transitorios.
+"""Política de reintento: UN solo reintento, solo ante errores transitorios,
+después de una pausa de 1 s.
 
 Envuelve cualquier DocumentExtractor (patrón decorador), así la política no depende
 de Google: el adaptador clasifica el error y aquí solo se decide si reintentar.
 """
 
 import logging
+import time
 from time import perf_counter
 
 from app.application.ports import DocumentExtractor, ExtractionFailed, TransientExtractionError
@@ -14,12 +16,22 @@ from app.domain.extraction import RawExtraction
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 1
+RETRY_DELAY_SECONDS = 1.0
+
+# Se llama a través de esta variable para que los tests puedan reemplazarla y no esperar.
+_sleep = time.sleep
 
 
 class RetryingDocumentExtractor:
-    def __init__(self, extractor: DocumentExtractor, max_retries: int = MAX_RETRIES) -> None:
+    def __init__(
+        self,
+        extractor: DocumentExtractor,
+        max_retries: int = MAX_RETRIES,
+        retry_delay_seconds: float = RETRY_DELAY_SECONDS,
+    ) -> None:
         self._extractor = extractor
         self._max_retries = max_retries
+        self._retry_delay_seconds = retry_delay_seconds
 
     def extract(self, document: Document) -> RawExtraction:
         attempt = 1
@@ -32,6 +44,7 @@ class RetryingDocumentExtractor:
                 _log_failure(attempt, started, error, will_retry)
                 if not will_retry:
                     raise
+                _sleep(self._retry_delay_seconds)
                 attempt += 1
             except ExtractionFailed as error:  # 4xx y errores permanentes: sin reintento
                 _log_failure(attempt, started, error, will_retry=False)

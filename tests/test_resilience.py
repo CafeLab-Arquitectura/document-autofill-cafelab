@@ -76,13 +76,39 @@ def test_transient_error_twice_gives_up_after_one_retry(errors):
     assert inner.calls == 2
 
 
-def test_permanent_error_is_not_retried():
+def test_waits_one_second_before_the_retry(retry_sleeps):
+    RetryingDocumentExtractor(ScriptedExtractor(ExtractionTimeout("DeadlineExceeded"))).extract(
+        DOCUMENT
+    )
+
+    assert retry_sleeps == [1.0]
+
+
+def test_no_wait_after_the_last_attempt(retry_sleeps):
+    inner = ScriptedExtractor(
+        TransientExtractionError("ServiceUnavailable"), TransientExtractionError("ServiceUnavailable")
+    )
+
+    with pytest.raises(TransientExtractionError):
+        RetryingDocumentExtractor(inner).extract(DOCUMENT)
+
+    assert retry_sleeps == [1.0]
+
+
+def test_no_wait_when_the_first_attempt_succeeds(retry_sleeps):
+    RetryingDocumentExtractor(ScriptedExtractor()).extract(DOCUMENT)
+
+    assert retry_sleeps == []
+
+
+def test_permanent_error_is_not_retried(retry_sleeps):
     inner = ScriptedExtractor(ExtractionFailed("InvalidArgument"))
 
     with pytest.raises(ExtractionFailed):
         RetryingDocumentExtractor(inner).extract(DOCUMENT)
 
     assert inner.calls == 1
+    assert retry_sleeps == []
 
 
 # Clasificación de errores de Google (adaptador)

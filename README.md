@@ -55,9 +55,9 @@ Cada petición calcula `SHA-256(bytes del archivo + userId en decimal)`.
 ### Timeout, reintento y logs
 
 - Cada llamada a Document AI tiene un timeout de `DOCAI_TIMEOUT_SECONDS` (10 s por defecto).
-- Ante un error transitorio (timeout, 5xx, `UNAVAILABLE`, `DEADLINE_EXCEEDED`) se hace **un solo reintento**. Los 4xx no se reintentan.
+- Ante un error transitorio (timeout, 5xx, `UNAVAILABLE`, `DEADLINE_EXCEEDED`) se hace **un solo reintento**, después de una pausa de 1 s. Los 4xx no se reintentan. El peor caso son unos 21 s (10 s + 1 s + 10 s).
 - Si falla, responde 504 cuando el último error fue timeout y 502 en los demás casos. Los fallos no se guardan.
-- Los reintentos automáticos de la librería de Google están desactivados (`retry=None`). Detalle en [docs/notas-document-ai.md](docs/notas-document-ai.md).
+- Los reintentos automáticos de la librería de Google (hasta 300 s) están desactivados con `retry=None`: el único reintento es el del servicio.
 
 Los logs salen por stdout, una línea JSON por evento. Nunca incluyen el archivo, el hash completo ni los valores leídos:
 
