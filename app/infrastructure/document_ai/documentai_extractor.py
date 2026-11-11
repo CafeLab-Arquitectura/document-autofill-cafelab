@@ -1,20 +1,29 @@
 """Adaptador de Google Cloud Document AI (Custom Extractor).
 
 Es la capa anticorrupción: ningún tipo ni excepción de la librería de Google sale
-de este módulo. Devuelve RawExtraction y, si algo falla, lanza ExtractionFailed.
+de este módulo. Devuelve RawExtraction y, si algo falla, lanza un error propio:
 
-El timeout ya se aplica aquí. El reintento y la diferencia entre 502 y 504 llegan en la Fase 5.
+- ExtractionTimeout: timeout o DEADLINE_EXCEEDED (se reintenta; si persiste, 504).
+- TransientExtractionError: 5xx o UNAVAILABLE (se reintenta; si persiste, 502).
+- ExtractionFailed: 4xx, credenciales u otros errores (no se reintenta; 502).
+
+Cada llamada tiene un timeout de DOCAI_TIMEOUT_SECONDS. El reintento no está aquí:
+lo hace RetryingDocumentExtractor (capa de aplicación).
 """
 
 import threading
 
 from google.api_core.client_options import ClientOptions
-from google.api_core.exceptions import GoogleAPIError
-from google.auth.exceptions import GoogleAuthError
+from google.api_core.exceptions import GatewayTimeout, GoogleAPIError, ServerError
+from google.auth.exceptions import GoogleAuthError, TransportError
 from google.cloud import documentai
 from google.oauth2 import service_account
 
-from app.application.ports import ExtractionFailed
+from app.application.ports import (
+    ExtractionFailed,
+    ExtractionTimeout,
+    TransientExtractionError,
+)
 from app.domain.document import Document
 from app.domain.extraction import ExtractedEntity, RawExtraction
 from app.infrastructure.config import Settings
@@ -46,6 +55,19 @@ def to_extraction(document: documentai.Document, processor_version: str | None) 
     return RawExtraction(entities=entities, processor_version=processor_version)
 
 
+def classify_error(error: Exception) -> ExtractionFailed:
+    """Traduce un error de Google a un error del servicio. Solo conserva el nombre del tipo:
+    el mensaje de Google puede incluir el proyecto o el procesador."""
+    name = type(error).__name__
+    if isinstance(error, GatewayTimeout):  # incluye DeadlineExceeded
+        return ExtractionTimeout(name)
+    if isinstance(error, ServerError):  # 5xx, incluye ServiceUnavailable (UNAVAILABLE)
+        return TransientExtractionError(name)
+    if isinstance(error, TransportError):  # sin red al renovar el token: equivale a UNAVAILABLE
+        return TransientExtractionError(name)
+    return ExtractionFailed(name)  # 4xx (ClientError), credenciales y el resto
+
+
 class DocumentAiExtractor:
     def __init__(
         self,
@@ -74,7 +96,7 @@ class DocumentAiExtractor:
                 retry=None,
             )
         except (GoogleAPIError, GoogleAuthError) as error:
-            raise ExtractionFailed(type(error).__name__) from error
+            raise classify_error(error) from error
 
         return to_extraction(response.document, self._settings.docai_processor_version)
 

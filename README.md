@@ -4,7 +4,7 @@ Microservicio de apoyo de CaféLab. Recibe la foto o el PDF de una guía de remi
 
 No es un bounded context: no valida ni crea lotes. Eso sigue siendo responsabilidad de Management, al que este servicio nunca llama.
 
-> Estado: Fase 4. Document AI real, normalización de campos e idempotencia con PostgreSQL. El reintento llega en la Fase 5.
+> Estado: Fase 5. Document AI real, normalización de campos, idempotencia con PostgreSQL, timeout con un solo reintento y logs en JSON.
 
 ## Endpoint
 
@@ -21,7 +21,8 @@ curl -H "X-User-Id: 42" -F "file=@guia.pdf" http://localhost:8000/api/v1/documen
 | 413 | El archivo supera `MAX_FILE_MB` |
 | 415 | El contenido no es JPG, PNG ni PDF |
 | 422 | Archivo vacío, corrupto, protegido con contraseña, ausente, más de un archivo o PDF de más de 1 página |
-| 502 | Document AI falló: el usuario debe completar el formulario manualmente |
+| 502 | Document AI falló (después del reintento, si el error era transitorio): el usuario debe completar el formulario manualmente |
+| 504 | Document AI no respondió a tiempo, tampoco en el reintento: el usuario debe completar el formulario manualmente |
 | 503 | La base de datos no responde: el usuario debe completar el formulario manualmente |
 
 ### Normalización de campos
@@ -50,6 +51,25 @@ Cada petición calcula `SHA-256(bytes del archivo + userId en decimal)`.
 - Solo se guardan los campos y las advertencias, **nunca el archivo**. Los fallos (archivo rechazado, error de Document AI) no se guardan.
 - El resultado guardado conserva las advertencias con las que se creó: si después cambia `CONFIDENCE_THRESHOLD`, no se recalcula.
 - Si la base no responde, el servicio devuelve 503 **sin** llamar a Document AI, para no pagar una lectura que no se puede guardar.
+
+### Timeout, reintento y logs
+
+- Cada llamada a Document AI tiene un timeout de `DOCAI_TIMEOUT_SECONDS` (10 s por defecto).
+- Ante un error transitorio (timeout, 5xx, `UNAVAILABLE`, `DEADLINE_EXCEEDED`) se hace **un solo reintento**. Los 4xx no se reintentan.
+- Si falla, responde 504 cuando el último error fue timeout y 502 en los demás casos. Los fallos no se guardan.
+- Los reintentos automáticos de la librería de Google están desactivados (`retry=None`). Detalle en [docs/notas-document-ai.md](docs/notas-document-ai.md).
+
+Los logs salen por stdout, una línea JSON por evento. Nunca incluyen el archivo, el hash completo ni los valores leídos:
+
+```json
+{"timestamp": "2026-11-11T05:20:03.936+00:00", "level": "INFO", "logger": "app.application.retrying_extractor", "event": "docai.call", "userId": 42, "fileHash": "0906add4d1dc", "attempt": 1, "durationMs": 4825, "ok": true}
+{"timestamp": "2026-11-11T05:20:03.943+00:00", "level": "INFO", "logger": "app.application.autofill_document", "event": "autofill.request", "userId": 42, "fileHash": "0906add4d1dc", "result": "extracted", "durationMs": 4871, "extractionId": 1}
+```
+
+| Evento | Cuándo | Campos |
+|---|---|---|
+| `autofill.request` | Una vez por petición | `userId`, `fileHash` (12 caracteres), `durationMs`, `result` (`extracted`, `cached`, `rejected`, `docai_failed`, `docai_timeout`, `db_unavailable`), `extractionId` o `reason` |
+| `docai.call` | Cada intento contra Document AI | `attempt`, `durationMs`, `ok`, y si falló: `errorType`, `cause`, `willRetry` |
 
 ## Arquitectura
 

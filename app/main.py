@@ -14,9 +14,11 @@ from fastapi import FastAPI
 
 from app.application.autofill_document import AutofillDocument
 from app.application.ports import DocumentExtractor, DocumentInspector, ExtractionRepository
+from app.application.retrying_extractor import RetryingDocumentExtractor
 from app.infrastructure.config import ConfigurationError, Settings, get_settings
 from app.infrastructure.document_ai.documentai_extractor import DocumentAiExtractor
 from app.infrastructure.files.document_inspector import FileDocumentInspector
+from app.infrastructure.json_logging import configure_logging
 from app.infrastructure.persistence.postgres_repository import PostgresExtractionRepository
 from app.interfaces.http.autofill_router import router as autofill_router
 from app.interfaces.http.error_handlers import register_error_handlers
@@ -52,7 +54,8 @@ def create_app(
     app.state.settings = settings
     app.state.autofill_use_case = AutofillDocument(
         inspector=inspector or FileDocumentInspector(),
-        extractor=extractor or DocumentAiExtractor(settings),
+        # Timeout por llamada en el adaptador; un solo reintento ante errores transitorios.
+        extractor=RetryingDocumentExtractor(extractor or DocumentAiExtractor(settings)),
         repository=repository or postgres,
         max_file_bytes=settings.max_file_bytes,
         confidence_threshold=settings.confidence_threshold,
@@ -70,7 +73,9 @@ def run() -> None:
     except ConfigurationError as error:
         print(error, file=sys.stderr)
         sys.exit(1)
-    uvicorn.run(create_app(settings), host="0.0.0.0", port=settings.port)
+    configure_logging()
+    # log_config=None: uvicorn usa el formato JSON configurado arriba.
+    uvicorn.run(create_app(settings), host="0.0.0.0", port=settings.port, log_config=None)
 
 
 if __name__ == "__main__":

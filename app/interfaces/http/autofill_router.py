@@ -37,7 +37,13 @@ def get_autofill_use_case(request: Request) -> AutofillDocument:
         },
         502: {
             "model": ErrorMessage,
-            "description": "Document AI falló; completar el formulario manualmente.",
+            "description": "Document AI falló (después del reintento si el error era "
+            "transitorio); completar el formulario manualmente.",
+        },
+        504: {
+            "model": ErrorMessage,
+            "description": "Document AI no respondió a tiempo, también en el reintento; "
+            "completar el formulario manualmente.",
         },
         503: {
             "model": ErrorMessage,

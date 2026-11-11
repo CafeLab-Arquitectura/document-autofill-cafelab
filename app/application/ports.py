@@ -8,7 +8,18 @@ from app.domain.extraction import Extraction, RawExtraction
 
 
 class ExtractionFailed(Exception):
-    """El extractor no pudo leer el documento. El usuario debe completar el formulario a mano."""
+    """El extractor no pudo leer el documento. El usuario debe completar el formulario a mano.
+
+    Usada directamente, es un error permanente (por ejemplo un 4xx): no se reintenta.
+    """
+
+
+class TransientExtractionError(ExtractionFailed):
+    """Error pasajero (5xx, UNAVAILABLE). Se puede reintentar una vez."""
+
+
+class ExtractionTimeout(TransientExtractionError):
+    """El extractor no respondió a tiempo (timeout, DEADLINE_EXCEEDED). Se puede reintentar una vez."""
 
 
 class RepositoryUnavailable(Exception):
