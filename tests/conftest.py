@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.infrastructure.config import Settings, load_settings
 from app.main import create_app
+from tests.fakes import FakeDocumentExtractor
 
 VALID_ENV = {
     "gcp_project_id": "test-project",
@@ -30,5 +31,10 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def client(settings: Settings) -> TestClient:
-    return TestClient(create_app(settings))
+def fake_extractor() -> FakeDocumentExtractor:
+    return FakeDocumentExtractor()
+
+
+@pytest.fixture
+def client(settings: Settings, fake_extractor: FakeDocumentExtractor) -> TestClient:
+    return TestClient(create_app(settings, extractor=fake_extractor))

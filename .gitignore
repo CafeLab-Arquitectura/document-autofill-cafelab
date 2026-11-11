@@ -18,6 +18,8 @@ htmlcov/
 *.egg-info/
 build/
 dist/
+docs/
+scripts/
 
 # Editores y sistema
 .vscode/

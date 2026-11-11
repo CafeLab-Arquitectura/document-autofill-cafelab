@@ -22,10 +22,12 @@ class AutofillDocument:
         inspector: DocumentInspector,
         extractor: DocumentExtractor,
         max_file_bytes: int,
+        confidence_threshold: float,
     ) -> None:
         self._inspector = inspector
         self._extractor = extractor
         self._max_file_bytes = max_file_bytes
+        self._confidence_threshold = confidence_threshold
 
     def execute(self, user_id: int, upload: UploadedFile) -> AutofillResult:
         document = accept_document(upload, self._max_file_bytes)
@@ -34,4 +36,7 @@ class AutofillDocument:
         file_hash = fingerprint(document.content, user_id)
         raw = self._extractor.extract(document)
 
-        return AutofillResult(extraction=map_extraction(raw), file_hash=file_hash)
+        return AutofillResult(
+            extraction=map_extraction(raw, self._confidence_threshold),
+            file_hash=file_hash,
+        )

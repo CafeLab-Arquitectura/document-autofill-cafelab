@@ -3,24 +3,15 @@ import hashlib
 import pytest
 
 from app.application.autofill_document import AutofillDocument
-from app.domain.document import Document, DocumentFormat, UploadedFile, accept_document, fingerprint
+from app.domain.document import DocumentFormat, UploadedFile, accept_document, fingerprint
 from app.domain.errors import FileTooLarge, InvalidDocument, UnsupportedFileType
-from app.domain.extraction import RawExtraction
 from app.infrastructure.files.document_inspector import FileDocumentInspector
 from tests import sample_files
-
-
-class SpyExtractor:
-    def __init__(self):
-        self.calls: list[Document] = []
-
-    def extract(self, document: Document) -> RawExtraction:
-        self.calls.append(document)
-        return RawExtraction(entities=())
+from tests.fakes import FakeDocumentExtractor as SpyExtractor
 
 
 def use_case(extractor, max_bytes=10 * 1024 * 1024):
-    return AutofillDocument(FileDocumentInspector(), extractor, max_bytes)
+    return AutofillDocument(FileDocumentInspector(), extractor, max_bytes, confidence_threshold=0.7)
 
 
 def upload(content, name="guia.pdf", content_type="application/pdf"):

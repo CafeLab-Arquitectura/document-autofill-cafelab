@@ -4,7 +4,7 @@ Microservicio de apoyo de CaféLab. Recibe la foto o el PDF de una guía de remi
 
 No es un bounded context: no valida ni crea lotes. Eso sigue siendo responsabilidad de Management, al que este servicio nunca llama.
 
-> Estado: Fase 2. El endpoint funciona de punta a punta con un adaptador **falso** de Document AI que devuelve datos fijos. El adaptador real llega en la Fase 3 y la persistencia en la Fase 4 (`extractionId` es `null` por ahora).
+> Estado: Fase 3. El endpoint usa Document AI real y normaliza los campos. La persistencia llega en la Fase 4 (`extractionId` es `null` por ahora) y el reintento en la Fase 5.
 
 ## Endpoint
 
@@ -21,6 +21,21 @@ curl -H "X-User-Id: 42" -F "file=@guia.pdf" http://localhost:8000/api/v1/documen
 | 413 | El archivo supera `MAX_FILE_MB` |
 | 415 | El contenido no es JPG, PNG ni PDF |
 | 422 | Archivo vacío, corrupto, protegido con contraseña, ausente, más de un archivo o PDF de más de 1 página |
+| 502 | Document AI falló: el usuario debe completar el formulario manualmente |
+
+### Normalización de campos
+
+| Campo | Regla | Si no se cumple |
+|---|---|---|
+| `lotName`, `supplierName`, `origin` | Texto, espacios simplificados | `NOT_FOUND` si falta |
+| `coffeeType` | Arábica, Robusta o Mezcla, sin distinguir mayúsculas ni tildes | `null` + `INVALID_VALUE` |
+| `processingMethod` | Lavado, Natural, Honey, Fermentación anaeróbica o Maceración carbónica | `null` + `INVALID_VALUE` |
+| `altitudeMeters`, `initialWeight` | Un solo número >= 0. **Coma = miles, punto = decimales**: "1,650 msnm" → 1650, "69.5" → 69.5 | `null` + `INVALID_NUMBER` (por ejemplo "69,5" o "-5") |
+| `certifications` | ORGANIC, FAIR_TRADE o RAINFOREST, reconocidas en español o inglés (tabla en [app/domain/vocabulary.py](app/domain/vocabulary.py)) | Se descarta + `UNKNOWN_CERTIFICATION` |
+
+- Campo ausente: valor y confianza `null` + `NOT_FOUND`.
+- Confianza menor a `CONFIDENCE_THRESHOLD`: el valor se devuelve igual + `LOW_CONFIDENCE`.
+- Si el modelo devuelve el mismo campo dos veces, se usa el de mayor confianza. En `certifications`, la confianza es la más baja de la lista.
 
 Notas:
 - El formato se detecta por el contenido del archivo (sus primeros bytes), no por el nombre ni el `Content-Type`. Si el archivo dice ser JPG, PNG o PDF pero su contenido no lo es, se trata como corrupto (422).

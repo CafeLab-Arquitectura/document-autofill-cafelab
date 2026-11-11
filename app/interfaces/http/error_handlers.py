@@ -5,7 +5,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.application.ports import ExtractionFailed
 from app.domain.errors import DocumentRejected, FileTooLarge, InvalidDocument, UnsupportedFileType
+
+EXTRACTION_FAILED_MESSAGE = (
+    "No se pudo leer el documento automáticamente. Completa el formulario manualmente."
+)
 
 _DOCUMENT_ERROR_STATUS: dict[type[DocumentRejected], int] = {
     UnsupportedFileType: 415,
@@ -31,3 +36,7 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(DocumentRejected)
     async def document_rejected(_: Request, error: DocumentRejected) -> JSONResponse:
         return error_response(_DOCUMENT_ERROR_STATUS.get(type(error), 422), error.message)
+
+    @app.exception_handler(ExtractionFailed)
+    async def extraction_failed(_: Request, __: ExtractionFailed) -> JSONResponse:
+        return error_response(502, EXTRACTION_FAILED_MESSAGE)

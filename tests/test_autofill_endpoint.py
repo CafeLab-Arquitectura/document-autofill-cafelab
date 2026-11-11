@@ -5,6 +5,7 @@ from app.infrastructure.config import load_settings
 from app.main import create_app
 from tests import sample_files
 from tests.conftest import VALID_ENV
+from tests.fakes import FailingExtractor, FakeDocumentExtractor
 
 URL = "/api/v1/documents/autofill"
 AUTH = {"X-User-Id": "42"}
@@ -45,8 +46,35 @@ def test_returns_response_contract(client):
         "processingMethod", "altitudeMeters", "initialWeight", "certifications",
     }
     assert body["fields"]["lotName"] == {"value": "Finca El Mirador L-14", "confidence": 0.93}
+    assert body["fields"]["coffeeType"] == {"value": "Arábica", "confidence": 0.91}
+    assert body["fields"]["altitudeMeters"] == {"value": 1650, "confidence": 0.97}
+    assert body["fields"]["initialWeight"] == {"value": 69, "confidence": 0.96}
     assert body["fields"]["certifications"] == {"value": ["ORGANIC"], "confidence": 0.8}
-    assert isinstance(body["warnings"], list)
+    assert body["warnings"] == [
+        {
+            "field": "processingMethod",
+            "code": "LOW_CONFIDENCE",
+            "message": "Revisar: confianza 0.62 menor al umbral 0.7",
+        }
+    ]
+
+
+def test_extractor_failure_returns_502_with_manual_fallback(settings):
+    client = TestClient(create_app(settings, extractor=FailingExtractor()))
+
+    response = post(client, pdf_upload())
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "message": "No se pudo leer el documento automáticamente. "
+        "Completa el formulario manualmente."
+    }
+
+
+def test_rejected_file_never_reaches_the_extractor(client, fake_extractor):
+    post(client, pdf_upload(sample_files.pdf(pages=2)))
+
+    assert fake_extractor.calls == []
 
 
 def test_format_comes_from_content_not_from_name(client):
@@ -88,7 +116,8 @@ def test_identity_is_checked_before_the_file(client):
 
 
 def test_rejects_file_over_the_limit():
-    client = TestClient(create_app(load_settings(**VALID_ENV, max_file_mb=1)))
+    settings = load_settings(**VALID_ENV, max_file_mb=1)
+    client = TestClient(create_app(settings, extractor=FakeDocumentExtractor()))
     too_big = b"%PDF-" + b"0" * (1024 * 1024)
 
     response = post(client, pdf_upload(too_big))

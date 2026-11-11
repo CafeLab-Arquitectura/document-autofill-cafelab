@@ -35,6 +35,10 @@ def get_autofill_use_case(request: Request) -> AutofillDocument:
             "model": ErrorMessage,
             "description": "Archivo vacío, corrupto, ausente, repetido o PDF de más de 1 página.",
         },
+        502: {
+            "model": ErrorMessage,
+            "description": "Document AI falló; completar el formulario manualmente.",
+        },
     },
 )
 async def autofill(
