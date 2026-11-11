@@ -4,7 +4,27 @@ Microservicio de apoyo de CaféLab. Recibe la foto o el PDF de una guía de remi
 
 No es un bounded context: no valida ni crea lotes. Eso sigue siendo responsabilidad de Management, al que este servicio nunca llama.
 
-> Estado: proyecto base (Fase 1). Por ahora solo expone `GET /health`.
+> Estado: Fase 2. El endpoint funciona de punta a punta con un adaptador **falso** de Document AI que devuelve datos fijos. El adaptador real llega en la Fase 3 y la persistencia en la Fase 4 (`extractionId` es `null` por ahora).
+
+## Endpoint
+
+`POST /api/v1/documents/autofill` (multipart/form-data, campo `file`)
+
+```bash
+curl -H "X-User-Id: 42" -F "file=@guia.pdf" http://localhost:8000/api/v1/documents/autofill
+```
+
+| Código | Cuándo |
+|---|---|
+| 200 | Sugerencias del lote (`fields` y `warnings`) |
+| 401 | Falta `X-User-Id` o no es un entero positivo |
+| 413 | El archivo supera `MAX_FILE_MB` |
+| 415 | El contenido no es JPG, PNG ni PDF |
+| 422 | Archivo vacío, corrupto, protegido con contraseña, ausente, más de un archivo o PDF de más de 1 página |
+
+Notas:
+- El formato se detecta por el contenido del archivo (sus primeros bytes), no por el nombre ni el `Content-Type`. Si el archivo dice ser JPG, PNG o PDF pero su contenido no lo es, se trata como corrupto (422).
+- Cada petición calcula `SHA-256(bytes del archivo + userId en decimal)`, que se usará en la Fase 4 para no procesar dos veces el mismo archivo.
 
 ## Arquitectura
 
@@ -102,6 +122,6 @@ docker run --rm -p 8000:8000 --env-file .env \
 
 La imagen no incluye `.env` ni archivos JSON. Las credenciales se montan al ejecutar el contenedor.
 
-## Identidad (se implementa en la Fase 2)
+## Identidad
 
 Como los demás microservicios, este servicio no valida el JWT. Confía en la cabecera `X-User-Id` que inyecta el API Gateway después de validar el token. Si falta o no es numérica, responde 401.

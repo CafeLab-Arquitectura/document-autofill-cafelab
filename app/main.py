@@ -10,12 +10,21 @@ import sys
 import uvicorn
 from fastapi import FastAPI
 
+from app.application.autofill_document import AutofillDocument
+from app.application.ports import DocumentExtractor, DocumentInspector
 from app.infrastructure.config import ConfigurationError, Settings, get_settings
+from app.infrastructure.document_ai.fake_extractor import FakeDocumentExtractor
+from app.infrastructure.files.document_inspector import FileDocumentInspector
+from app.interfaces.http.autofill_router import router as autofill_router
 from app.interfaces.http.error_handlers import register_error_handlers
 from app.interfaces.http.health_router import router as health_router
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    extractor: DocumentExtractor | None = None,
+    inspector: DocumentInspector | None = None,
+) -> FastAPI:
     settings = settings or get_settings()
 
     app = FastAPI(
@@ -27,9 +36,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ),
     )
     app.state.settings = settings
+    app.state.autofill_use_case = AutofillDocument(
+        inspector=inspector or FileDocumentInspector(),
+        # Adaptador falso hasta la Fase 3, donde entra el de Document AI.
+        extractor=extractor or FakeDocumentExtractor(),
+        max_file_bytes=settings.max_file_bytes,
+    )
 
     register_error_handlers(app)
     app.include_router(health_router)
+    app.include_router(autofill_router)
     return app
 
 
