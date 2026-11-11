@@ -1,4 +1,6 @@
-"""Formato de la columna result (jsonb): el mismo de "fields" y "warnings" en la respuesta HTTP."""
+"""DESACTIVADO (ver app/infrastructure/persistence/__init__.py).
+
+Formato de la columna result (jsonb): el mismo de "fields" y "warnings" en la respuesta HTTP."""
 
 from typing import Any
 

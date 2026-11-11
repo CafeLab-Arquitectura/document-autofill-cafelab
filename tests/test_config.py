@@ -20,7 +20,6 @@ def test_reads_environment_variables(monkeypatch):
     monkeypatch.setenv("DOCAI_LOCATION", " EU ")
     monkeypatch.setenv("DOCAI_PROCESSOR_ID", "env-processor")
     monkeypatch.setenv("DOCAI_PROCESSOR_VERSION", "")
-    monkeypatch.setenv("DATABASE_URL", "postgresql://u:p@host:6543/postgres")
     monkeypatch.setenv("CONFIDENCE_THRESHOLD", "0.8")
 
     settings = load_settings()
@@ -36,7 +35,7 @@ def test_missing_required_variables_are_listed():
         load_settings()
 
     message = str(error.value)
-    for name in ("GCP_PROJECT_ID", "DOCAI_LOCATION", "DOCAI_PROCESSOR_ID", "DATABASE_URL"):
+    for name in ("GCP_PROJECT_ID", "DOCAI_LOCATION", "DOCAI_PROCESSOR_ID"):
         assert name in message
 
 
@@ -48,7 +47,6 @@ def test_missing_required_variables_are_listed():
         ("max_file_mb", 0),
         ("docai_timeout_seconds", 0),
         ("gcp_project_id", "   "),
-        ("database_url", "mysql://u:p@host/db"),
         ("google_application_credentials", "no/existe/credenciales.json"),
     ],
 )
@@ -60,9 +58,9 @@ def test_invalid_values_are_rejected(field, value):
 
 
 def test_error_message_never_contains_secret_values():
-    secret_url = "mysql://user:SUPER_SECRET@host/db"
+    secret_path = "C:/SUPER_SECRET/credenciales.json"
 
     with pytest.raises(ConfigurationError) as error:
-        load_settings(**{**VALID_ENV, "database_url": secret_url})
+        load_settings(**{**VALID_ENV, "google_application_credentials": secret_path})
 
     assert "SUPER_SECRET" not in str(error.value)

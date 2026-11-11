@@ -45,10 +45,6 @@ def get_autofill_use_case(request: Request) -> AutofillDocument:
             "description": "Document AI no respondió a tiempo, también en el reintento; "
             "completar el formulario manualmente.",
         },
-        503: {
-            "model": ErrorMessage,
-            "description": "La base de datos no responde; completar el formulario manualmente.",
-        },
     },
 )
 async def autofill(

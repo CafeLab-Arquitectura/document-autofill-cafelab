@@ -5,7 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.application.ports import ExtractionFailed, ExtractionTimeout, RepositoryUnavailable
+from app.application.ports import ExtractionFailed, ExtractionTimeout
 from app.domain.errors import DocumentRejected, FileTooLarge, InvalidDocument, UnsupportedFileType
 
 EXTRACTION_FAILED_MESSAGE = (
@@ -13,9 +13,6 @@ EXTRACTION_FAILED_MESSAGE = (
 )
 EXTRACTION_TIMEOUT_MESSAGE = (
     "La lectura automática del documento tardó demasiado. Completa el formulario manualmente."
-)
-REPOSITORY_UNAVAILABLE_MESSAGE = (
-    "El servicio de autocompletado no está disponible. Completa el formulario manualmente."
 )
 
 _DOCUMENT_ERROR_STATUS: dict[type[DocumentRejected], int] = {
@@ -50,7 +47,3 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ExtractionTimeout)
     async def extraction_timeout(_: Request, __: ExtractionTimeout) -> JSONResponse:
         return error_response(504, EXTRACTION_TIMEOUT_MESSAGE)
-
-    @app.exception_handler(RepositoryUnavailable)
-    async def repository_unavailable(_: Request, __: RepositoryUnavailable) -> JSONResponse:
-        return error_response(503, REPOSITORY_UNAVAILABLE_MESSAGE)

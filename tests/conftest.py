@@ -5,13 +5,12 @@ from app.application import retrying_extractor
 
 from app.infrastructure.config import Settings, load_settings
 from app.main import create_app
-from tests.fakes import FakeDocumentExtractor, InMemoryExtractionRepository
+from tests.fakes import FakeDocumentExtractor
 
 VALID_ENV = {
     "gcp_project_id": "test-project",
     "docai_location": "us",
     "docai_processor_id": "test-processor",
-    "database_url": "postgresql://user:pass@localhost:5432/test",
 }
 
 
@@ -21,7 +20,7 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(__import__("pathlib").Path(__file__).parent)
     for name in (
         "GCP_PROJECT_ID", "DOCAI_LOCATION", "DOCAI_PROCESSOR_ID", "DOCAI_PROCESSOR_VERSION",
-        "GOOGLE_APPLICATION_CREDENTIALS", "DATABASE_URL", "CONFIDENCE_THRESHOLD",
+        "GOOGLE_APPLICATION_CREDENTIALS", "CONFIDENCE_THRESHOLD",
         "MAX_FILE_MB", "DOCAI_TIMEOUT_SECONDS", "PORT",
     ):
         monkeypatch.delenv(name, raising=False)
@@ -46,14 +45,5 @@ def fake_extractor() -> FakeDocumentExtractor:
 
 
 @pytest.fixture
-def repository() -> InMemoryExtractionRepository:
-    return InMemoryExtractionRepository()
-
-
-@pytest.fixture
-def client(
-    settings: Settings,
-    fake_extractor: FakeDocumentExtractor,
-    repository: InMemoryExtractionRepository,
-) -> TestClient:
-    return TestClient(create_app(settings, extractor=fake_extractor, repository=repository))
+def client(settings: Settings, fake_extractor: FakeDocumentExtractor) -> TestClient:
+    return TestClient(create_app(settings, extractor=fake_extractor))

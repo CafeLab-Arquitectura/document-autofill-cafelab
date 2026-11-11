@@ -13,7 +13,7 @@ from app.domain.document import UploadedFile, fingerprint
 from app.infrastructure.files.document_inspector import FileDocumentInspector
 from app.infrastructure.json_logging import JsonFormatter
 from tests import sample_files
-from tests.fakes import FakeDocumentExtractor, InMemoryExtractionRepository
+from tests.fakes import FakeDocumentExtractor
 
 PDF = sample_files.pdf()
 
@@ -43,7 +43,6 @@ def use_case(extractor):
     return AutofillDocument(
         FileDocumentInspector(),
         RetryingDocumentExtractor(extractor),
-        InMemoryExtractionRepository(),
         10 * 1024 * 1024,
         confidence_threshold=0.7,
     )
@@ -66,15 +65,17 @@ def test_request_log_has_user_short_hash_duration_and_result(json_logs):
     assert log["fileHash"] == fingerprint(PDF, 42)[:12]
     assert log["result"] == "extracted"
     assert isinstance(log["durationMs"], int)
-    assert log["extractionId"] == 1
 
 
-def test_cached_request_is_logged_as_cached(json_logs):
-    service = use_case(FakeDocumentExtractor())
+def test_repeated_file_is_processed_again(json_logs):
+    """Sin persistencia no hay caché: el mismo archivo vuelve a llamar a Document AI."""
+    extractor = FakeDocumentExtractor()
+    service = use_case(extractor)
     service.execute(42, upload())
     service.execute(42, upload())
 
-    assert [log["result"] for log in request_logs(json_logs)] == ["extracted", "cached"]
+    assert [log["result"] for log in request_logs(json_logs)] == ["extracted", "extracted"]
+    assert len(extractor.calls) == 2
 
 
 def test_docai_calls_are_logged_with_attempts(json_logs):

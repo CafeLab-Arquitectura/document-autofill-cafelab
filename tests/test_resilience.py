@@ -19,7 +19,6 @@ from app.infrastructure.document_ai.documentai_extractor import DocumentAiExtrac
 from app.main import create_app
 from tests import sample_files
 from tests.conftest import VALID_ENV
-from tests.fakes import InMemoryExtractionRepository
 
 URL = "/api/v1/documents/autofill"
 DOCUMENT = Document(content=b"%PDF-1.7", format=DocumentFormat.PDF)
@@ -172,14 +171,11 @@ def test_4xx_from_google_is_not_retried():
     assert len(client.calls) == 1
 
 
-# Endpoint: 200 tras recuperarse, 502 / 504 si falla, y nada guardado
+# Endpoint: 200 tras recuperarse, 502 / 504 si falla
 
 
-def make_client(extractor, repository=None) -> TestClient:
-    settings = load_settings(**VALID_ENV)
-    return TestClient(
-        create_app(settings, extractor=extractor, repository=repository or InMemoryExtractionRepository())
-    )
+def make_client(extractor) -> TestClient:
+    return TestClient(create_app(load_settings(**VALID_ENV), extractor=extractor))
 
 
 def post(client):
@@ -213,17 +209,14 @@ def test_endpoint_returns_200_when_the_retry_succeeds():
         ((ExtractionFailed("PermissionDenied"),), 502, MESSAGE_502),
     ],
 )
-def test_endpoint_failure_asks_to_fill_the_form_manually_and_saves_nothing(errors, status, message):
-    repository = InMemoryExtractionRepository()
-
-    response = post(make_client(ScriptedExtractor(*errors), repository))
+def test_endpoint_failure_asks_to_fill_the_form_manually(errors, status, message):
+    response = post(make_client(ScriptedExtractor(*errors)))
 
     assert response.status_code == status
     assert response.json() == {"message": message}
-    assert repository.rows == {}
 
 
-def test_failure_is_not_cached_so_the_next_request_tries_again():
+def test_next_request_after_a_failure_calls_document_ai_again():
     extractor = ScriptedExtractor(
         TransientExtractionError("ServiceUnavailable"), TransientExtractionError("ServiceUnavailable")
     )
@@ -233,5 +226,4 @@ def test_failure_is_not_cached_so_the_next_request_tries_again():
     second = post(client)
 
     assert second.status_code == 200
-    assert second.json()["cached"] is False
     assert extractor.calls == 3

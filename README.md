@@ -4,7 +4,7 @@ Microservicio de apoyo de CaféLab. Recibe la foto o el PDF de una guía de remi
 
 No es un bounded context: no valida ni crea lotes. Eso sigue siendo responsabilidad de Management, al que este servicio nunca llama.
 
-> Estado: Fase 5. Document AI real, normalización de campos, idempotencia con PostgreSQL, timeout con un solo reintento y logs en JSON.
+> Estado: Fase 5. Document AI real, normalización de campos, timeout con un solo reintento y logs en JSON. Sin base de datos: no se guarda nada (ver [Persistencia desactivada](#persistencia-desactivada)).
 
 ## Endpoint
 
@@ -23,7 +23,6 @@ curl -H "X-User-Id: 42" -F "file=@guia.pdf" http://localhost:8000/api/v1/documen
 | 422 | Archivo vacío, corrupto, protegido con contraseña, ausente, más de un archivo o PDF de más de 1 página |
 | 502 | Document AI falló (después del reintento, si el error era transitorio): el usuario debe completar el formulario manualmente |
 | 504 | Document AI no respondió a tiempo, tampoco en el reintento: el usuario debe completar el formulario manualmente |
-| 503 | La base de datos no responde: el usuario debe completar el formulario manualmente |
 
 ### Normalización de campos
 
@@ -41,58 +40,57 @@ curl -H "X-User-Id: 42" -F "file=@guia.pdf" http://localhost:8000/api/v1/documen
 
 Notas:
 - El formato se detecta por el contenido del archivo (sus primeros bytes), no por el nombre ni el `Content-Type`. Si el archivo dice ser JPG, PNG o PDF pero su contenido no lo es, se trata como corrupto (422).
-### Idempotencia
+- `extractionId` y `cached` se mantienen en la respuesta para no cambiar el contrato, pero valen siempre `null` y `false`: el servicio no guarda nada y cada petición llama a Document AI.
 
-Cada petición calcula `SHA-256(bytes del archivo + userId en decimal)`.
+### Persistencia desactivada
 
-- Si ya existe un registro para ese hash y ese usuario, devuelve el resultado guardado con `"cached": true` y **no** vuelve a llamar a Document AI.
-- Si no existe, procesa el archivo, lo guarda y devuelve `"cached": false`.
-- Si llegan dos peticiones iguales a la vez, el `UNIQUE (user_id, file_hash)` deja guardar solo una. La otra recibe ese mismo registro.
-- Solo se guardan los campos y las advertencias, **nunca el archivo**. Los fallos (archivo rechazado, error de Document AI) no se guardan.
-- El resultado guardado conserva las advertencias con las que se creó: si después cambia `CONFIDENCE_THRESHOLD`, no se recalcula.
-- Si la base no responde, el servicio devuelve 503 **sin** llamar a Document AI, para no pagar una lectura que no se puede guardar.
+El servicio **no usa base de datos**: no guarda las extracciones y no hay idempotencia. Enviar dos veces el mismo archivo llama dos veces a Document AI (cada página tiene costo).
+
+El código de persistencia se conserva desactivado, por si se decide reactivarlo:
+- [app/infrastructure/persistence/](app/infrastructure/persistence/): repositorio PostgreSQL (psycopg 3, `prepare_threshold=None` para el pooler de Supabase). No se importa desde la aplicación. Su `__init__.py` explica los pasos para reactivarlo.
+- [db/migrations/001_create_document_extractions.sql](db/migrations/001_create_document_extractions.sql): **no hace falta ejecutarlo**.
+- `psycopg` y `psycopg-pool` están comentados en `requirements.txt`.
 
 ### Timeout, reintento y logs
 
 - Cada llamada a Document AI tiene un timeout de `DOCAI_TIMEOUT_SECONDS` (10 s por defecto).
 - Ante un error transitorio (timeout, 5xx, `UNAVAILABLE`, `DEADLINE_EXCEEDED`) se hace **un solo reintento**, después de una pausa de 1 s. Los 4xx no se reintentan. El peor caso son unos 21 s (10 s + 1 s + 10 s).
-- Si falla, responde 504 cuando el último error fue timeout y 502 en los demás casos. Los fallos no se guardan.
+- Si falla, responde 504 cuando el último error fue timeout y 502 en los demás casos.
 - Los reintentos automáticos de la librería de Google (hasta 300 s) están desactivados con `retry=None`: el único reintento es el del servicio.
 
 Los logs salen por stdout, una línea JSON por evento. Nunca incluyen el archivo, el hash completo ni los valores leídos:
 
 ```json
 {"timestamp": "2026-11-11T05:20:03.936+00:00", "level": "INFO", "logger": "app.application.retrying_extractor", "event": "docai.call", "userId": 42, "fileHash": "0906add4d1dc", "attempt": 1, "durationMs": 4825, "ok": true}
-{"timestamp": "2026-11-11T05:20:03.943+00:00", "level": "INFO", "logger": "app.application.autofill_document", "event": "autofill.request", "userId": 42, "fileHash": "0906add4d1dc", "result": "extracted", "durationMs": 4871, "extractionId": 1}
+{"timestamp": "2026-11-11T05:20:03.943+00:00", "level": "INFO", "logger": "app.application.autofill_document", "event": "autofill.request", "userId": 42, "fileHash": "0906add4d1dc", "result": "extracted", "durationMs": 4871}
 ```
 
 | Evento | Cuándo | Campos |
 |---|---|---|
-| `autofill.request` | Una vez por petición | `userId`, `fileHash` (12 caracteres), `durationMs`, `result` (`extracted`, `cached`, `rejected`, `docai_failed`, `docai_timeout`, `db_unavailable`), `extractionId` o `reason` |
+| `autofill.request` | Una vez por petición | `userId`, `fileHash` (12 caracteres), `durationMs`, `result` (`extracted`, `rejected`, `docai_failed`, `docai_timeout`) y `reason` si falló |
 | `docai.call` | Cada intento contra Document AI | `attempt`, `durationMs`, `ok`, y si falló: `errorType`, `cause`, `willRetry` |
 
 ## Arquitectura
 
-Arquitectura hexagonal (puertos y adaptadores) con capas de DDD. Las dependencias apuntan hacia adentro: el dominio no conoce FastAPI, Google ni PostgreSQL.
+Arquitectura hexagonal (puertos y adaptadores) con capas de DDD. Las dependencias apuntan hacia adentro: el dominio no conoce FastAPI ni Google.
 
 ```text
 app/
 ├── domain/           Modelos del servicio y reglas de normalización (código puro)
 ├── application/      Casos de uso y puertos (interfaces) que necesita el dominio
-├── infrastructure/   Adaptadores de salida: Document AI, PostgreSQL y configuración
+├── infrastructure/   Adaptadores de salida: Document AI, archivos, logs y configuración
 ├── interfaces/http/  Adaptadores de entrada: routers de FastAPI y formato de errores
 └── main.py           Une las capas y arranca el servidor
 tests/
 ```
 
 - Los tipos de la librería de Google no salen de `infrastructure`: el adaptador los traduce a objetos del dominio (capa anticorrupción).
-- Los casos de uso dependen de puertos, así los tests usan adaptadores falsos o en memoria sin llamar a la nube.
+- Los casos de uso dependen de puertos, así los tests usan adaptadores falsos sin llamar a la nube.
 
 ## Requisitos
 
 - Python 3.12
 - Un procesador de Document AI configurado (ver [docs/fase-0-google-cloud.md](docs/fase-0-google-cloud.md))
-- Una base PostgreSQL (Supabase)
 
 ## Variables de entorno
 
@@ -105,31 +103,12 @@ Copia `.env.example` como `.env` y completa los valores. El servicio valida la c
 | `DOCAI_PROCESSOR_ID` | Sí | | ID del procesador Custom Extractor |
 | `DOCAI_PROCESSOR_VERSION` | No | versión predeterminada | ID de la versión del procesador |
 | `GOOGLE_APPLICATION_CREDENTIALS` | No* | | Ruta al JSON de la cuenta de servicio. Si se define, el archivo debe existir |
-| `DATABASE_URL` | Sí | | `postgresql://USUARIO:CONTRASEÑA@HOST:6543/postgres` |
 | `CONFIDENCE_THRESHOLD` | No | `0.7` | Confianza mínima (0 a 1); por debajo se devuelve el campo con advertencia |
 | `MAX_FILE_MB` | No | `10` | Tamaño máximo del archivo |
 | `DOCAI_TIMEOUT_SECONDS` | No | `10` | Timeout por llamada a Document AI |
 | `PORT` | No | `8000` | Puerto HTTP |
 
 \* Fuera de Google Cloud hace falta para autenticarse con Document AI.
-
-### Supabase y prepared statements
-
-Los servicios de CaféLab se conectan al pooler de Supabase en **modo transacción (puerto 6543)**, que no soporta prepared statements. psycopg 3 los crea solo cuando una consulta se repite varias veces. Este servicio los desactiva con `prepare_threshold=None` (ver [postgres_repository.py](app/infrastructure/persistence/postgres_repository.py)).
-
-`DATABASE_URL` usa el formato de Python, no el de JDBC:
-
-```env
-DATABASE_URL=postgresql://postgres.<project-ref>:<contraseña>@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require
-```
-
-Si la contraseña tiene caracteres especiales, codifícalos en la URL (`@` → `%40`, `#` → `%23`).
-
-### Migración
-
-El script [db/migrations/001_create_document_extractions.sql](db/migrations/001_create_document_extractions.sql) crea el esquema `document_autofill` y la tabla `document_extractions`. **Se ejecuta a mano, una vez**, con el mismo usuario de `DATABASE_URL`: por ejemplo, desde el SQL Editor de Supabase o con `psql "$DATABASE_URL" -f db/migrations/001_create_document_extractions.sql`. Se puede repetir sin problema.
-
-Sin la tabla, el servicio arranca, pero `POST /api/v1/documents/autofill` responde 503.
 
 ## Correr en local
 
@@ -167,15 +146,9 @@ La documentación OpenAPI queda en http://localhost:8000/docs.
 pytest
 ```
 
-Los tests no leen el `.env` local ni llaman a servicios reales. Usan un repositorio en memoria.
+Los tests no leen el `.env` local ni llaman a servicios reales.
 
-Las pruebas de integración del repositorio PostgreSQL ([tests/integration](tests/integration)) se saltan si no existe `TEST_DATABASE_URL`. Úsalas **solo con una base local o desechable**, nunca con Supabase: crean el esquema y borran las filas que insertan.
-
-```bash
-docker run -d --rm --name autofill-pg-test -e POSTGRES_PASSWORD=test -p 55432:5432 postgres:16-alpine
-TEST_DATABASE_URL=postgresql://postgres:test@localhost:55432/postgres pytest tests/integration
-docker rm -f autofill-pg-test
-```
+Las pruebas de integración de [tests/integration](tests/integration) son de la persistencia desactivada: se saltan solas.
 
 ## Docker
 

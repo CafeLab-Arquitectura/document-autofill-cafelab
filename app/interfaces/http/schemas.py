@@ -43,9 +43,14 @@ class WarningOut(BaseModel):
 class AutofillResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    extraction_id: int = Field(alias="extractionId", description="Id en document_extractions.")
+    # Se mantienen para no cambiar el contrato con el front. Sin persistencia,
+    # no hay id guardado ni caché: siempre null y false.
+    extraction_id: int | None = Field(
+        alias="extractionId",
+        description="Siempre null: el servicio no guarda las extracciones.",
+    )
     cached: bool = Field(
-        description="true si el resultado ya estaba guardado y no se volvió a llamar a Document AI."
+        description="Siempre false: cada petición se procesa con Document AI (no hay caché)."
     )
     fields: FieldsOut
     warnings: list[WarningOut]
@@ -54,8 +59,8 @@ class AutofillResponse(BaseModel):
     def from_result(cls, result: AutofillResult) -> "AutofillResponse":
         extraction = result.extraction
         return cls(
-            extraction_id=result.extraction_id,
-            cached=result.cached,
+            extraction_id=None,
+            cached=False,
             fields=FieldsOut(
                 **{name.value: FieldOut.from_domain(s) for name, s in extraction.fields.items()}
             ),

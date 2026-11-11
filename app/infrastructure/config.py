@@ -23,9 +23,6 @@ class Settings(BaseSettings):
     docai_timeout_seconds: float = Field(default=10, gt=0)
     google_application_credentials: Path | None = None
 
-    # Persistencia
-    database_url: str = Field(min_length=1)
-
     # Reglas del servicio
     confidence_threshold: float = Field(default=0.7, ge=0, le=1)
     max_file_mb: int = Field(default=10, gt=0)
@@ -33,7 +30,7 @@ class Settings(BaseSettings):
     # Servidor
     port: int = Field(default=8000, ge=1, le=65535)
 
-    @field_validator("gcp_project_id", "docai_processor_id", "database_url")
+    @field_validator("gcp_project_id", "docai_processor_id")
     @classmethod
     def strip_required(cls, value: str) -> str:
         value = value.strip()
@@ -58,13 +55,6 @@ class Settings(BaseSettings):
     def credentials_file_exists(cls, value: Path | None) -> Path | None:
         if value is not None and not value.is_file():
             raise ValueError("el archivo de credenciales no existe")
-        return value
-
-    @field_validator("database_url")
-    @classmethod
-    def postgres_url(cls, value: str) -> str:
-        if not value.startswith(("postgresql://", "postgres://")):
-            raise ValueError("debe empezar con postgresql:// o postgres://")
         return value
 
     @property

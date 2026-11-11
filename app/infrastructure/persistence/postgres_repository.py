@@ -1,4 +1,6 @@
-"""Repositorio PostgreSQL (Supabase) de document_autofill.document_extractions.
+"""DESACTIVADO (ver app/infrastructure/persistence/__init__.py).
+
+Repositorio PostgreSQL (Supabase) de document_autofill.document_extractions.
 
 Supabase en modo transacción (pooler, puerto 6543) no soporta prepared statements.
 psycopg 3 los crea solo después de repetir una consulta varias veces (prepare_threshold).
@@ -12,7 +14,11 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool, PoolTimeout
 
-from app.application.ports import NewExtraction, RepositoryUnavailable, StoredExtraction
+from app.infrastructure.persistence.contracts import (
+    NewExtraction,
+    RepositoryUnavailable,
+    StoredExtraction,
+)
 from app.infrastructure.persistence.extraction_json import (
     extraction_from_json,
     extraction_to_json,

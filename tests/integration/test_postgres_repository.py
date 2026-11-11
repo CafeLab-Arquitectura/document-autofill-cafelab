@@ -1,4 +1,6 @@
-"""Prueba el repositorio contra un PostgreSQL de PRUEBA.
+"""DESACTIVADO: la persistencia no se usa (ver app/infrastructure/persistence/__init__.py).
+
+Prueba el repositorio contra un PostgreSQL de PRUEBA.
 
 Se salta si no está definida TEST_DATABASE_URL. Úsala SOLO con una base local o
 desechable (por ejemplo, un contenedor de Docker), nunca con la de producción:
@@ -12,10 +14,11 @@ import secrets
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import psycopg
 import pytest
 
-from app.application.ports import NewExtraction
+psycopg = pytest.importorskip("psycopg", reason="persistencia desactivada: psycopg no está instalado")
+
+from app.infrastructure.persistence.contracts import NewExtraction
 from app.domain.extraction import Extraction, FieldName, FieldSuggestion
 from app.infrastructure.persistence.postgres_repository import PostgresExtractionRepository
 

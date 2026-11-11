@@ -1,4 +1,8 @@
 -- 001_create_document_extractions.sql
+--
+-- DESACTIVADO: el servicio ya no usa base de datos. NO es necesario ejecutar este script.
+-- Se conserva por si se reactiva la persistencia (ver app/infrastructure/persistence/__init__.py).
+--
 -- Esquema propio del servicio document-autofill-cafelab.
 --
 -- Guarda SOLO lo que se leyó de cada guía (campos y advertencias), NUNCA el archivo.
