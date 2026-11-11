@@ -6,15 +6,18 @@ Se usa como fábrica, así la configuración se valida al arrancar y no al impor
 """
 
 import sys
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
 
 from app.application.autofill_document import AutofillDocument
-from app.application.ports import DocumentExtractor, DocumentInspector
+from app.application.ports import DocumentExtractor, DocumentInspector, ExtractionRepository
 from app.infrastructure.config import ConfigurationError, Settings, get_settings
 from app.infrastructure.document_ai.documentai_extractor import DocumentAiExtractor
 from app.infrastructure.files.document_inspector import FileDocumentInspector
+from app.infrastructure.persistence.postgres_repository import PostgresExtractionRepository
 from app.interfaces.http.autofill_router import router as autofill_router
 from app.interfaces.http.error_handlers import register_error_handlers
 from app.interfaces.http.health_router import router as health_router
@@ -24,8 +27,18 @@ def create_app(
     settings: Settings | None = None,
     extractor: DocumentExtractor | None = None,
     inspector: DocumentInspector | None = None,
+    repository: ExtractionRepository | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
+    postgres = None if repository else PostgresExtractionRepository(settings.database_url)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if postgres:
+            postgres.open()
+        yield
+        if postgres:
+            postgres.close()
 
     app = FastAPI(
         title="document-autofill-cafelab",
@@ -34,11 +47,13 @@ def create_app(
             "Lee una guía de remisión (Formato X) con Document AI y devuelve los datos "
             "del lote de café como sugerencias para autocompletar el formulario."
         ),
+        lifespan=lifespan,
     )
     app.state.settings = settings
     app.state.autofill_use_case = AutofillDocument(
         inspector=inspector or FileDocumentInspector(),
         extractor=extractor or DocumentAiExtractor(settings),
+        repository=repository or postgres,
         max_file_bytes=settings.max_file_bytes,
         confidence_threshold=settings.confidence_threshold,
     )

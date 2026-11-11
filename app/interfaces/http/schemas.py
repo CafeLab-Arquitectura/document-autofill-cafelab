@@ -43,8 +43,10 @@ class WarningOut(BaseModel):
 class AutofillResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    extraction_id: int | None = Field(alias="extractionId")
-    cached: bool
+    extraction_id: int = Field(alias="extractionId", description="Id en document_extractions.")
+    cached: bool = Field(
+        description="true si el resultado ya estaba guardado y no se volvió a llamar a Document AI."
+    )
     fields: FieldsOut
     warnings: list[WarningOut]
 

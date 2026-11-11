@@ -8,10 +8,17 @@ from app.domain.errors import FileTooLarge, InvalidDocument, UnsupportedFileType
 from app.infrastructure.files.document_inspector import FileDocumentInspector
 from tests import sample_files
 from tests.fakes import FakeDocumentExtractor as SpyExtractor
+from tests.fakes import InMemoryExtractionRepository
 
 
 def use_case(extractor, max_bytes=10 * 1024 * 1024):
-    return AutofillDocument(FileDocumentInspector(), extractor, max_bytes, confidence_threshold=0.7)
+    return AutofillDocument(
+        FileDocumentInspector(),
+        extractor,
+        InMemoryExtractionRepository(),
+        max_bytes,
+        confidence_threshold=0.7,
+    )
 
 
 def upload(content, name="guia.pdf", content_type="application/pdf"):

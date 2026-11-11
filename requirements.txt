@@ -6,3 +6,5 @@ python-multipart==0.0.33
 pypdf==7.0.1
 pillow==13.0.0
 google-cloud-documentai==3.17.0
+psycopg[binary]==3.3.8
+psycopg-pool==3.3.3

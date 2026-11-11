@@ -5,7 +5,7 @@ from app.infrastructure.config import load_settings
 from app.main import create_app
 from tests import sample_files
 from tests.conftest import VALID_ENV
-from tests.fakes import FailingExtractor, FakeDocumentExtractor
+from tests.fakes import FailingExtractor, FakeDocumentExtractor, InMemoryExtractionRepository
 
 URL = "/api/v1/documents/autofill"
 AUTH = {"X-User-Id": "42"}
@@ -60,7 +60,9 @@ def test_returns_response_contract(client):
 
 
 def test_extractor_failure_returns_502_with_manual_fallback(settings):
-    client = TestClient(create_app(settings, extractor=FailingExtractor()))
+    client = TestClient(create_app(
+        settings, extractor=FailingExtractor(), repository=InMemoryExtractionRepository()
+    ))
 
     response = post(client, pdf_upload())
 
@@ -117,7 +119,9 @@ def test_identity_is_checked_before_the_file(client):
 
 def test_rejects_file_over_the_limit():
     settings = load_settings(**VALID_ENV, max_file_mb=1)
-    client = TestClient(create_app(settings, extractor=FakeDocumentExtractor()))
+    client = TestClient(create_app(
+        settings, extractor=FakeDocumentExtractor(), repository=InMemoryExtractionRepository()
+    ))
     too_big = b"%PDF-" + b"0" * (1024 * 1024)
 
     response = post(client, pdf_upload(too_big))
