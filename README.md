@@ -30,7 +30,7 @@ curl -H "X-User-Id: 42" -F "file=@guia.pdf" http://localhost:8000/api/v1/documen
 | `lotName`, `supplierName`, `origin` | Texto, espacios simplificados | `NOT_FOUND` si falta |
 | `coffeeType` | Arábica, Robusta o Mezcla, sin distinguir mayúsculas ni tildes | `null` + `INVALID_VALUE` |
 | `processingMethod` | Lavado, Natural, Honey, Fermentación anaeróbica o Maceración carbónica | `null` + `INVALID_VALUE` |
-| `altitudeMeters`, `initialWeight` | Un solo número >= 0. **Coma = miles, punto = decimales**: "1,650 msnm" → 1650, "69.5" → 69.5 | `null` + `INVALID_NUMBER` (por ejemplo "69,5" o "-5") |
+| `altitudeMeters`, `initialWeight` | Un solo número >= 0. El punto es decimal ("69.5" → 69.5). Una coma seguida de exactamente 3 dígitos separa miles ("1,650 msnm" → 1650); con otra cantidad de dígitos es decimal ("60,5" → 60.5) | `null` + `INVALID_NUMBER` (por ejemplo "-5", "1.650,5" o "1650 - 1800") |
 | `certifications` | ORGANIC, FAIR_TRADE o RAINFOREST, reconocidas en español o inglés (tabla en [app/domain/vocabulary.py](app/domain/vocabulary.py)) | Se descarta + `UNKNOWN_CERTIFICATION` |
 
 - Campo ausente: valor y confianza `null` + `NOT_FOUND`.

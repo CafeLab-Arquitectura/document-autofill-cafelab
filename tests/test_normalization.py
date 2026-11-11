@@ -57,7 +57,7 @@ def test_value_outside_the_list_is_null_with_invalid_value(text):
     assert [issue.code for issue in result.issues] == [WarningCode.INVALID_VALUE]
 
 
-# Números: coma = miles, punto = decimales
+# Números: punto = decimal; coma + 3 dígitos = miles; coma + otra cantidad = decimal
 
 
 @pytest.mark.parametrize(
@@ -73,6 +73,13 @@ def test_value_outside_the_list_is_null_with_invalid_value(text):
         ("1,650.25 kg", 1650.25),
         ("69.0", 69),
         ("0", 0),
+        ("60,5", 60.5),
+        ("60,5 kg", 60.5),
+        ("69,25", 69.25),
+        ("1,65", 1.65),
+        ("60,0", 60),
+        ("60,500", 60500),  # coma + 3 dígitos: siempre miles
+        ("69 kg.", 69),
     ],
 )
 def test_parse_number(text, expected):
@@ -85,9 +92,9 @@ def test_parse_number(text, expected):
 @pytest.mark.parametrize(
     "text",
     [
-        "69,5",  # la coma es de miles: grupo de 1 dígito no es válido
-        "1,65",
-        "1,6500",
+        "1.650,5",  # punto y coma mezclados al estilo europeo
+        "1,65,000",  # grupos de miles mal formados
+        "1,650,5",
         "1650 - 1800 msnm",  # más de un número
         "mil seiscientos",
         "",
@@ -97,7 +104,7 @@ def test_parse_number_rejects_ambiguous_text(text):
     assert parse_number(text) is None
 
 
-@pytest.mark.parametrize("text", ["-5", "-1,650 msnm", "69,5", "sin dato"])
+@pytest.mark.parametrize("text", ["-5", "-1,650 msnm", "-60,5", "1.650,5", "sin dato"])
 def test_invalid_or_negative_number_is_null_with_invalid_number(text):
     result = normalize_non_negative_number(text)
 

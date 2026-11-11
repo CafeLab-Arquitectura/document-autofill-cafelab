@@ -91,7 +91,7 @@ def test_invalid_coffee_type_keeps_confidence_and_warns():
 
 
 def test_invalid_number_warns():
-    extraction = extract(("initial_weight_kg", "69,5", 0.9))
+    extraction = extract(("initial_weight_kg", "1.650,5", 0.9))
 
     assert extraction.fields[FieldName.INITIAL_WEIGHT].value is None
     assert warning_codes(extraction, FieldName.INITIAL_WEIGHT) == [WarningCode.INVALID_NUMBER]

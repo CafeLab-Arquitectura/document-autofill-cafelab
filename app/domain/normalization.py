@@ -44,20 +44,35 @@ def normalize_option(text: str, index: dict[str, str]) -> Normalized:
     )
 
 
-# Un número: dígitos con coma de miles opcional y punto decimal opcional.
-_NUMBER_TOKEN = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
-_WELL_FORMED = re.compile(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?")
+# Un número: dígitos con comas o puntos en medio ("1,650", "60,5", "1,650.25").
+_NUMBER_TOKEN = re.compile(r"-?\d[\d.,]*")
+_PLAIN = re.compile(r"-?\d+(?:\.\d+)?")  # 1650 / 69.5
+_THOUSANDS = re.compile(r"-?\d{1,3}(?:,\d{3})+(?:\.\d+)?")  # 1,650 / 12,345.5
+_DECIMAL_COMMA = re.compile(r"-?\d+,\d+")  # 60,5 / 69,25
 
 
 def parse_number(text: str) -> int | float | None:
-    """Coma = miles y punto = decimales: "1,650 msnm" -> 1650; "69.5" -> 69.5.
+    """Lee un número escrito en la guía.
 
-    Devuelve None si no hay exactamente un número bien escrito ("69,5", "1650-1800").
+    - El punto siempre es decimal: "69.5" -> 69.5.
+    - Una coma seguida de exactamente 3 dígitos separa miles: "1,650 msnm" -> 1650.
+    - Una coma seguida de otra cantidad de dígitos es decimal: "60,5" -> 60.5.
+
+    Devuelve None si no hay exactamente un número bien escrito ("1650 - 1800", "1.650,5").
     """
-    tokens = _NUMBER_TOKEN.findall(text)
-    if len(tokens) != 1 or not _WELL_FORMED.fullmatch(tokens[0]):
+    tokens = [token.rstrip(".,") for token in _NUMBER_TOKEN.findall(text)]
+    if len(tokens) != 1:
         return None
-    number = float(tokens[0].replace(",", ""))
+    token = tokens[0]
+
+    if _PLAIN.fullmatch(token):
+        number = float(token)
+    elif _THOUSANDS.fullmatch(token):
+        number = float(token.replace(",", ""))
+    elif _DECIMAL_COMMA.fullmatch(token):
+        number = float(token.replace(",", "."))
+    else:
+        return None
     return int(number) if number.is_integer() else number
 
 
