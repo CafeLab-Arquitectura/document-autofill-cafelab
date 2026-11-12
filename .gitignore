@@ -1,0 +1,28 @@
+# Variables de entorno
+.env
+.env.*
+!.env.example
+
+# Credenciales: ningún JSON se versiona, salvo los fixtures de tests
+*.json
+!tests/fixtures/**/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
+docs/
+scripts/
+
+# Editores y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
