@@ -241,6 +241,19 @@ Los tests no leen el `.env` local ni llaman a Google Cloud. Cubren:
 
 ## Docker
 
+Con Docker Compose, usando el mismo `.env` que en local:
+
+```bash
+docker compose up -d --build
+docker compose ps        # debe mostrar "healthy" tras unos segundos
+docker compose logs -f
+docker compose down
+```
+
+El JSON de la cuenta de servicio **no entra a la imagen**: [docker-compose.yml](docker-compose.yml) lo monta en solo lectura desde la ruta de `GOOGLE_APPLICATION_CREDENTIALS` del `.env`. Si falta alguna variable obligatoria, Compose se detiene y dice cuál.
+
+Sin Compose:
+
 ```bash
 docker build -t document-autofill-cafelab .
 docker run --rm -p 8000:8000 --env-file .env \

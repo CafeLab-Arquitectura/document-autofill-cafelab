@@ -1,0 +1,33 @@
+# Usa el mismo .env que el servicio en local (ver .env.example).
+# Docker Compose lee ese .env para completar las ${VARIABLES} de este archivo.
+services:
+  document-autofill:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: document-autofill-cafelab:latest
+    container_name: document-autofill-service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID:?Falta GCP_PROJECT_ID en el .env}
+      - DOCAI_LOCATION=${DOCAI_LOCATION:-us}
+      - DOCAI_PROCESSOR_ID=${DOCAI_PROCESSOR_ID:?Falta DOCAI_PROCESSOR_ID en el .env}
+      - DOCAI_PROCESSOR_VERSION=${DOCAI_PROCESSOR_VERSION:-}
+      - DOCAI_TIMEOUT_SECONDS=${DOCAI_TIMEOUT_SECONDS:-10}
+      - CONFIDENCE_THRESHOLD=${CONFIDENCE_THRESHOLD:-0.7}
+      - MAX_FILE_MB=${MAX_FILE_MB:-10}
+      # Dentro del contenedor la credencial siempre está en esta ruta (ver volumes)
+      - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gcp-key.json
+    volumes:
+      # El JSON de la cuenta de servicio se queda en la máquina, fuera del repo y de la imagen.
+      # Se monta en solo lectura desde la ruta que indica GOOGLE_APPLICATION_CREDENTIALS en el .env.
+      - ${GOOGLE_APPLICATION_CREDENTIALS:?Falta GOOGLE_APPLICATION_CREDENTIALS en el .env}:/run/secrets/gcp-key.json:ro
+    healthcheck:
+      # La imagen slim no trae wget ni curl, por eso el chequeo usa Python
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
