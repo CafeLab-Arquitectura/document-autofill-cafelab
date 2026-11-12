@@ -6,12 +6,56 @@ from starlette.concurrency import run_in_threadpool
 from app.application.autofill_document import AutofillDocument
 from app.domain.document import UploadedFile
 from app.domain.errors import InvalidDocument
-from app.interfaces.http.identity import require_user_id
+from app.interfaces.http.error_handlers import (
+    EXTRACTION_FAILED_MESSAGE,
+    EXTRACTION_TIMEOUT_MESSAGE,
+)
+from app.interfaces.http.identity import UNAUTHORIZED_MESSAGE, require_user_id
 from app.interfaces.http.schemas import AutofillResponse, ErrorMessage
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
 FILE_FIELD = "file"
+
+
+def _error(description: str, *examples: str) -> dict:
+    """Respuesta de error para OpenAPI, con un ejemplo por cada mensaje posible."""
+    return {
+        "model": ErrorMessage,
+        "description": description,
+        "content": {
+            "application/json": {
+                "examples": {
+                    f"ejemplo{n}": {"value": {"message": message}}
+                    for n, message in enumerate(examples, start=1)
+                }
+            }
+        },
+    }
+
+
+ERROR_RESPONSES = {
+    401: _error("Falta X-User-Id o no es un entero positivo.", UNAUTHORIZED_MESSAGE),
+    413: _error("El archivo supera MAX_FILE_MB (10 MB).", "El archivo supera el máximo de 10 MB."),
+    415: _error("El contenido no es JPG, PNG ni PDF.", "Formato no permitido. Usa JPG, PNG o PDF."),
+    422: _error(
+        "Archivo vacío, corrupto, protegido, ausente, repetido o PDF de más de 1 página.",
+        "El PDF tiene 2 páginas; solo se acepta un PDF de 1 página.",
+        "El archivo está vacío.",
+        "El archivo está corrupto o no se puede leer.",
+        "Falta el archivo en el campo 'file'.",
+    ),
+    502: _error(
+        "Document AI falló (después de un reintento si el error era transitorio). "
+        "El usuario debe completar el formulario manualmente.",
+        EXTRACTION_FAILED_MESSAGE,
+    ),
+    504: _error(
+        "Document AI no respondió a tiempo, tampoco en el reintento. "
+        "El usuario debe completar el formulario manualmente.",
+        EXTRACTION_TIMEOUT_MESSAGE,
+    ),
+}
 
 
 def get_autofill_use_case(request: Request) -> AutofillDocument:
@@ -24,34 +68,23 @@ def get_autofill_use_case(request: Request) -> AutofillDocument:
     response_model_by_alias=True,
     summary="Sugerencias para el formulario de lote a partir de una guía de remisión",
     description=(
-        "Recibe un solo archivo (JPG, PNG o PDF de 1 página, máximo 10 MB) en el campo "
-        "`file`. Devuelve los datos leídos como sugerencias: no crea ni valida el lote."
+        "Recibe **un solo archivo** (JPG, PNG o PDF de 1 página, máximo 10 MB) en el campo "
+        "`file` y lo lee con Document AI (Custom Extractor, sin entrenamiento).\n\n"
+        "Devuelve los datos del lote como **sugerencias**: no crea ni valida el lote, eso "
+        "sigue siendo de Management. Los campos dudosos traen advertencias en `warnings`.\n\n"
+        "No se guarda nada: cada petición llama a Document AI (`extractionId` siempre null "
+        "y `cached` siempre false)."
     ),
-    responses={
-        401: {"model": ErrorMessage, "description": "Falta X-User-Id o no es válida."},
-        413: {"model": ErrorMessage, "description": "El archivo supera el tamaño máximo."},
-        415: {"model": ErrorMessage, "description": "Formato no permitido."},
-        422: {
-            "model": ErrorMessage,
-            "description": "Archivo vacío, corrupto, ausente, repetido o PDF de más de 1 página.",
-        },
-        502: {
-            "model": ErrorMessage,
-            "description": "Document AI falló (después del reintento si el error era "
-            "transitorio); completar el formulario manualmente.",
-        },
-        504: {
-            "model": ErrorMessage,
-            "description": "Document AI no respondió a tiempo, también en el reintento; "
-            "completar el formulario manualmente.",
-        },
-    },
+    responses=ERROR_RESPONSES,
 )
 async def autofill(
     request: Request,
     user_id: Annotated[int, Depends(require_user_id)],
     use_case: Annotated[AutofillDocument, Depends(get_autofill_use_case)],
-    file: Annotated[UploadFile | None, File(description="Guía de remisión.")] = None,
+    file: Annotated[
+        UploadFile | None,
+        File(description="Guía de remisión (Formato X): JPG, PNG o PDF de 1 página, máximo 10 MB."),
+    ] = None,
 ) -> AutofillResponse:
     form = await request.form()
     if len(form.getlist(FILE_FIELD)) > 1:
